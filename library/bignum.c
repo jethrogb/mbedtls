@@ -2193,6 +2193,13 @@ int mbedtls_mpi_gen_prime( mbedtls_mpi *X, size_t nbits, int dh_flag,
                    int (*f_rng)(void *, unsigned char *, size_t),
                    void *p_rng )
 {
+#ifdef MBEDTLS_HAVE_INT64
+// ceil(2^63.5)
+#define CEIL_MAXUINT_DIV_SQRT2 0xb504f333f9de6485ULL
+#else
+// ceil(2^31.5)
+#define CEIL_MAXUINT_DIV_SQRT2 0xb504f334U
+#endif
     int ret;
     size_t k, n;
     mbedtls_mpi_uint r;
@@ -2205,23 +2212,23 @@ int mbedtls_mpi_gen_prime( mbedtls_mpi *X, size_t nbits, int dh_flag,
 
     n = BITS_TO_LIMBS( nbits );
 
+new_number:
     MBEDTLS_MPI_CHK( mbedtls_mpi_fill_random( X, n * ciL, f_rng, p_rng ) );
+    /* make sure generated number is at least (n-1)+0.5 bits */
+    if( X->p[n-1] < CEIL_MAXUINT_DIV_SQRT2 ) goto new_number;
 
-    k = mbedtls_mpi_bitlen( X );
-    if( k > nbits ) MBEDTLS_MPI_CHK( mbedtls_mpi_shift_r( X, k - nbits + 1 ) );
-
-    mbedtls_mpi_set_bit( X, nbits-1, 1 );
-
+    k = n * biL;
+    if( k > nbits ) MBEDTLS_MPI_CHK( mbedtls_mpi_shift_r( X, k - nbits ) );
     X->p[0] |= 1;
 
     if( dh_flag == 0 )
     {
-        while( ( ret = mbedtls_mpi_is_prime( X, f_rng, p_rng ) ) != 0 )
+        if( ( ret = mbedtls_mpi_is_prime( X, f_rng, p_rng ) ) != 0 )
         {
             if( ret != MBEDTLS_ERR_MPI_NOT_ACCEPTABLE )
                 goto cleanup;
 
-            MBEDTLS_MPI_CHK( mbedtls_mpi_add_int( X, X, 2 ) );
+            goto new_number;
         }
     }
     else
