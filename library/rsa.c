@@ -528,15 +528,15 @@ int mbedtls_rsa_gen_key( mbedtls_rsa_context *ctx,
         MBEDTLS_MPI_CHK( mbedtls_mpi_gen_prime( &ctx->Q, nbits >> 1, 0,
                                                 f_rng, p_rng ) );
 
-        if( mbedtls_mpi_cmp_mpi( &ctx->P, &ctx->Q ) == 0 )
+        /* make sure the difference between p and q is not too small */
+        MBEDTLS_MPI_CHK( mbedtls_mpi_sub_mpi( &H, &ctx->P, &ctx->Q ) );
+        if( ( nbits >= 200 ) && ( mbedtls_mpi_bitlen( &H ) < (nbits >> 1) - 100 ) )
             continue;
+
+        if( H.s < 0 )
+            mbedtls_mpi_swap( &ctx->P, &ctx->Q );
 
         MBEDTLS_MPI_CHK( mbedtls_mpi_mul_mpi( &ctx->N, &ctx->P, &ctx->Q ) );
-        if( mbedtls_mpi_bitlen( &ctx->N ) != nbits )
-            continue;
-
-        if( mbedtls_mpi_cmp_mpi( &ctx->P, &ctx->Q ) < 0 )
-            mbedtls_mpi_swap( &ctx->P, &ctx->Q );
 
         /* Temporarily replace P,Q by P-1, Q-1 */
         MBEDTLS_MPI_CHK( mbedtls_mpi_sub_int( &ctx->P, &ctx->P, 1 ) );
